@@ -1,0 +1,110 @@
+#!/usr/bin/env ruby
+
+require "bundler/setup"
+require "zendesk_polly"
+require 'commander/import'
+LANGUAGES          = [
+                        "all",
+                        "en-US",
+                        "en-AU",
+                        "en-GB",
+                        "en-GB-WLS",
+                        "en-IN",
+                        "cy-GB",
+                        "da-DK",
+                        "de-DE",
+                        "es-ES",
+                        "es-US",
+                        "fr-CA",
+                        "fr-FR",
+                        "is-IS",
+                        "it-IT",
+                        "ja-JP",
+                        "nb-NO",
+                        "nl-NL",
+                        "pl-PL",
+                        "pt-BR",
+                        "pt-PT",
+                        "ro-RO",
+                        "ru-RU",
+                        "sv-SE",
+                        "tr-TR"
+                      ]
+
+program :name, 'ZendeskPolly'
+program :version, ZendeskPolly::VERSION
+program :description, 'Client to create zendesk greetings with Aws Polly'
+
+command :create do |c|
+  c.syntax = 'zp create'
+  c.description = 'Creates a Zendesk greeting with Aws Polly'
+
+  c.option '--name STRING', String, 'Greeting name'
+  c.option '--category STRING', String, 'Greeting category'
+  c.option '--voice STRING', String, 'Greeting voice'
+  c.option '--text STRING', String, 'Greeting text'
+
+  c.action do |args, options|
+    client        = ZendeskPolly::Client.new
+    client.check_configurations
+    
+    name          = options.name      || ask("Greeting name: ")
+    category      = options.category  || choose("Greeting Category", *ZendeskPolly::Greeting::CATEGORIES.keys)
+    voice         = options.voice     || choose("Choose a voice from the list", *client.voice_names)
+    text          = options.text      || ask("Type your message:")
+    
+    greeting      = client.poly_greeting(
+                      name:       name,
+                      category:   category,
+                      voice:      voice,
+                      text:       text
+                    )
+    
+    should_play   = agree("Would you like to play the message(y/n)?")
+    greeting.play if should_play
+    
+    if agree("Would you like to save the message(y/n)?")
+      say "Creating... #{name}"
+      greeting.save
+    else
+      say "Message was not created"
+    end
+  end
+end
+
+command :init do |c|
+  c.syntax = 'zp init .'
+  c.description = 'Configures ZendeskPolly'
+  c.action do |args, options|
+    say 'Initializing Configuration'
+    config = ZendeskPolly::Config.new
+    config.aws_key = ask("AWS key: ")
+    config.aws_secret = ask("AWS secret: ")
+    config.aws_region = ask("AWS region: ")
+    config.zendesk_username = ask("Zendesk username: ")
+    config.zendesk_token = ask("Zendesk token: ")
+    config.zendesk_url = ask("Zendesk url: ")
+    config.serialize_to_file
+  end
+end
+
+command :voices do |c|
+  c.syntax      = 'zp voices'
+  c.description = 'Lists available voices'
+  c.option '--language String', String, 'Language code'
+  c.action do |args, options|
+    code = options.language || choose('Which language', *LANGUAGES)
+    say 'These are the available voices:'
+    client = ZendeskPolly::Client.new
+    client.voices(code)
+  end
+end
+
+command :categories do |c|
+  c.syntax      = 'zp categories'
+  c.description = 'Lists available greeting categories'
+  c.action do |args, options|
+    say 'These are the available greeting categories'
+    say ZendeskPolly::Greeting::CATEGORIES.keys.map(&:to_s)
+  end
+end
